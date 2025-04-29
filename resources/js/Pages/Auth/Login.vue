@@ -1,12 +1,20 @@
 <script setup>
-import AuthenticationCard from '@/Components/AuthenticationCard.vue';
-import AuthenticationCardLogo from '@/Components/AuthenticationCardLogo.vue';
-import Button from '@/Components/Button.vue';
-import Input from '@/Components/Input.vue';
-import Label from '@/Components/Label.vue';
-import ValidationErrors from '@/Components/ValidationErrors.vue';
+import Checkbox from '@/Components/Checkbox.vue';
+import GuestLayout from '@/Layouts/GuestLayout.vue';
+import InputError from '@/Components/InputError.vue';
+import InputLabel from '@/Components/InputLabel.vue';
+import PrimaryButton from '@/Components/PrimaryButton.vue';
+import TextInput from '@/Components/TextInput.vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
-import ms from '@/Lang/ms';
+
+defineProps({
+    canResetPassword: {
+        type: Boolean,
+    },
+    status: {
+        type: String,
+    },
+});
 
 const form = useForm({
     email: '',
@@ -22,19 +30,18 @@ const submit = () => {
 </script>
 
 <template>
-    <Head :title="ms.auth.login" />
+    <GuestLayout>
+        <Head title="Log in" />
 
-    <AuthenticationCard>
-        <template #logo>
-            <AuthenticationCardLogo />
-        </template>
-
-        <ValidationErrors class="mb-4" />
+        <div v-if="status" class="mb-4 font-medium text-sm text-green-600">
+            {{ status }}
+        </div>
 
         <form @submit.prevent="submit">
             <div>
-                <Label for="email" :value="ms.auth.email" />
-                <Input
+                <InputLabel for="email" value="Email" />
+
+                <TextInput
                     id="email"
                     type="email"
                     class="mt-1 block w-full"
@@ -43,11 +50,14 @@ const submit = () => {
                     autofocus
                     autocomplete="username"
                 />
+
+                <InputError class="mt-2" :message="form.errors.email" />
             </div>
 
             <div class="mt-4">
-                <Label for="password" :value="ms.auth.password" />
-                <Input
+                <InputLabel for="password" value="Password" />
+
+                <TextInput
                     id="password"
                     type="password"
                     class="mt-1 block w-full"
@@ -55,12 +65,14 @@ const submit = () => {
                     required
                     autocomplete="current-password"
                 />
+
+                <InputError class="mt-2" :message="form.errors.password" />
             </div>
 
             <div class="block mt-4">
                 <label class="flex items-center">
-                    <input type="checkbox" class="rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50" v-model="form.remember" />
-                    <span class="ms-2 text-sm text-gray-600">{{ ms.auth.remember_me }}</span>
+                    <Checkbox name="remember" v-model:checked="form.remember" />
+                    <span class="ms-2 text-sm text-gray-600">Remember me</span>
                 </label>
             </div>
 
@@ -70,13 +82,13 @@ const submit = () => {
                     :href="route('password.request')"
                     class="underline text-sm text-gray-600 hover:text-gray-900 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
                 >
-                    {{ ms.auth.forgot_password }}
+                    Forgot your password?
                 </Link>
 
-                <Button class="ms-4" :class="{ 'opacity-25': form.processing }" :disabled="form.processing">
-                    {{ ms.auth.login }}
-                </Button>
+                <PrimaryButton class="ms-4" :class="{ 'opacity-25': form.processing }" :disabled="form.processing">
+                    Log in
+                </PrimaryButton>
             </div>
         </form>
-    </AuthenticationCard>
+    </GuestLayout>
 </template>
