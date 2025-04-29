@@ -12,8 +12,7 @@ class AppServiceProvider extends ServiceProvider
         // Share unread notifications count with all views
         View::composer('*', function ($view) {
             if (auth()->check()) {
-                $unreadNotifications = auth()->user()->unreadNotifications()->count();
-                $view->with('unreadNotifications', $unreadNotifications);
+                $view->with('unreadNotifications', auth()->user()->unreadNotifications()->count());
             }
         });
     }

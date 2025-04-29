@@ -87,4 +87,9 @@ class User extends Authenticatable
     {
         return $this->userType && $this->userType->name === 'PYD';
     }
+
+    public function unreadNotifications()
+{
+    return $this->notifications()->where('is_read', false);
+}
 }
