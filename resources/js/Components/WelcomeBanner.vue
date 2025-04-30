@@ -1,5 +1,6 @@
 <script setup>
 import ms from '@/Lang/ms';
+
 const user = usePage().props.auth.user;
 
 const getWelcomeMessage = () => {
