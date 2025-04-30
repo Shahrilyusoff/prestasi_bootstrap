@@ -56,6 +56,9 @@ return [
 
     'url' => env('APP_URL', 'http://localhost'),
 
+    'locale' => 'ms',
+    'fallback_locale' => 'en',
+
     'asset_url' => env('ASSET_URL', '/'),
 
     /*

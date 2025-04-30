@@ -79,6 +79,26 @@ class EvaluationController extends Controller
         ]);
     }
 
+    public function create()
+    {
+        $pydUsers = User::whereHas('userType', fn($q) => $q->where('name', 'PYD'))->get();
+        $pppUsers = User::whereHas('userType', fn($q) => $q->where('name', 'PPP'))->get();
+        $ppkUsers = User::whereHas('userType', fn($q) => $q->where('name', 'PPK'))->get();
+        $pydGroups = PydGroup::all();
+
+        return view('evaluations.create', compact('pydUsers', 'pppUsers', 'ppkUsers', 'pydGroups'));
+    }
+
+    public function edit(Evaluation $evaluation)
+    {
+        $pydUsers = User::whereHas('userType', fn($q) => $q->where('name', 'PYD'))->get();
+        $pppUsers = User::whereHas('userType', fn($q) => $q->where('name', 'PPP'))->get();
+        $ppkUsers = User::whereHas('userType', fn($q) => $q->where('name', 'PPK'))->get();
+        $pydGroups = PydGroup::all();
+
+        return view('evaluations.edit', compact('evaluation', 'pydUsers', 'pppUsers', 'ppkUsers', 'pydGroups'));
+    }
+
     public function update(Request $request, Evaluation $evaluation)
     {
         $validator = Validator::make($request->all(), [
