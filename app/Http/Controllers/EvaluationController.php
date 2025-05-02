@@ -38,29 +38,39 @@ class EvaluationController extends Controller
 
     public function store(Request $request)
     {
-        $validator = Validator::make($request->all(), [
+        $request->validate([
             'pyd_id' => 'required|exists:users,id',
             'ppp_id' => 'required|exists:users,id',
             'ppk_id' => 'required|exists:users,id',
             'pyd_group_id' => 'required|exists:pyd_groups,id',
-            'year' => 'required|integer|min:2000|max:' . (date('Y') + 1),
+            'evaluation_period_id' => 'required|exists:evaluation_periods,id',
         ]);
-
-        if ($validator->fails()) {
-            return response()->json($validator->errors(), 422);
-        }
-
-        $evaluation = Evaluation::create($request->all());
-
-        // Create initial work target for awal tahun
+    
+        $period = EvaluationPeriod::find($request->evaluation_period_id);
+        
+        $evaluation = Evaluation::create([
+            'pyd_id' => $request->pyd_id,
+            'ppp_id' => $request->ppp_id,
+            'ppk_id' => $request->ppk_id,
+            'pyd_group_id' => $request->pyd_group_id,
+            'year' => $period->start_date->year,
+            'evaluation_period_id' => $request->evaluation_period_id,
+        ]);
+    
+        // Create initial work target
         $evaluation->workTargets()->create([
-            'type' => 'awal_tahun',
+            'type' => $period->type === 'mid_year' ? 'pertengahan_tahun' : 'awal_tahun',
         ]);
-
-        return response()->json([
-            'message' => 'Penilaian baru berjaya dicipta',
-            'evaluation' => $evaluation,
-        ], 201);
+    
+        // Notify PYD
+        Notification::create([
+            'user_id' => $request->pyd_id,
+            'message' => 'Anda telah ditugaskan untuk penilaian prestasi',
+            'action_url' => route('evaluations.show', $evaluation->id),
+        ]);
+    
+        return redirect()->route('evaluations.index')
+            ->with('success', 'Penilaian berjaya dicipta');
     }
 
     public function show(Evaluation $evaluation)
@@ -85,8 +95,15 @@ class EvaluationController extends Controller
         $pppUsers = User::whereHas('userType', fn($q) => $q->where('name', 'PPP'))->get();
         $ppkUsers = User::whereHas('userType', fn($q) => $q->where('name', 'PPK'))->get();
         $pydGroups = PydGroup::all();
+        $activePeriod = EvaluationPeriod::active()->first();
 
-        return view('evaluations.create', compact('pydUsers', 'pppUsers', 'ppkUsers', 'pydGroups'));
+        return view('evaluations.create', compact(
+            'pydUsers', 
+            'pppUsers', 
+            'ppkUsers', 
+            'pydGroups',
+            'activePeriod'
+    ));
     }
 
     public function edit(Evaluation $evaluation)

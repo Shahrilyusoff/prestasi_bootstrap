@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\EvaluationController;
+use App\Http\Controllers\EvaluationPeriodController;
 use App\Http\Controllers\NotificationController;
 
 Route::get('/', function () {
@@ -50,11 +51,21 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/evaluations/{evaluation}/marks', [EvaluationController::class, 'saveMarks'])
         ->name('evaluations.marks.save');
 
+    // Evaluations Period
+    Route::resource('evaluation-periods', EvaluationPeriodController::class)->except(['show']);
+    Route::get('/evaluation-periods/{evaluationPeriod}/mass-assign', [EvaluationPeriodController::class, 'massAssign'])
+        ->name('evaluation-periods.mass-assign');
+    Route::post('/evaluation-periods/{evaluationPeriod}/mass-assign', [EvaluationPeriodController::class, 'storeMassAssign'])
+        ->name('evaluation-periods.store-mass-assign');
+    Route::post('/evaluation-periods/{evaluationPeriod}/toggle-active', [EvaluationPeriodController::class, 'toggleActive'])
+        ->name('evaluation-periods.toggle-active');
+
     // Notifications
     Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
     Route::put('/notifications/{notification}/read', [NotificationController::class, 'markAsRead'])->name('notifications.read');
     Route::put('/notifications/mark-all-read', [NotificationController::class, 'markAllAsRead'])->name('notifications.read.all');
     Route::delete('/notifications/{notification}', [NotificationController::class, 'destroy'])->name('notifications.destroy');
+
 });
 
 require __DIR__.'/auth.php';

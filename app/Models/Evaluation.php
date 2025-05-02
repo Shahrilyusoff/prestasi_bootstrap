@@ -10,7 +10,7 @@ class Evaluation extends Model
     use HasFactory;
 
     protected $fillable = [
-        'pyd_id', 'ppp_id', 'ppk_id', 'pyd_group_id', 'year', 'status'
+        'pyd_id', 'ppp_id', 'ppk_id', 'pyd_group_id', 'year', 'status', 'evaluation_period_id'
     ];
 
     public function pyd()
@@ -31,6 +31,11 @@ class Evaluation extends Model
     public function pydGroup()
     {
         return $this->belongsTo(PydGroup::class);
+    }
+
+    public function evaluationPeriod()
+    {
+        return $this->belongsTo(EvaluationPeriod::class);
     }
 
     public function marks()
