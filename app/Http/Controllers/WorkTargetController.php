@@ -18,42 +18,52 @@ class WorkTargetController extends Controller
 
     public function store(Request $request, Evaluation $evaluation)
     {
-        $validator = Validator::make($request->all(), [
+        $request->validate([
+            'evaluation_id' => 'required|exists:evaluations,id',
             'type' => 'required|in:awal_tahun,pertengahan_tahun,akhir_tahun',
-            'items' => 'required|array',
-            'items.*.activity' => 'required|string',
-            'items.*.performance_indicator' => 'required|string',
-            'items.*.is_added' => 'sometimes|boolean',
-            'items.*.is_removed' => 'sometimes|boolean',
+            'items' => 'sometimes|array',
+            'items.*.activity' => 'required_with:items|string',
+            'items.*.performance_indicator' => 'required_with:items|string',
+            'added_items' => 'sometimes|array',
+            'added_items.*.activity' => 'required_with:added_items|string',
+            'added_items.*.performance_indicator' => 'required_with:added_items|string',
+            'added_items.*.is_added' => 'sometimes|boolean',
+            'removed_items' => 'sometimes|array',
+            'removed_items.*.is_removed' => 'sometimes|boolean',
+            'removed_items.*.activity' => 'required_with:removed_items|string',
+            'approved' => 'sometimes|boolean',
         ]);
-
-        if ($validator->fails()) {
-            return response()->json($validator->errors(), 422);
+    
+        $evaluation = Evaluation::find($request->evaluation_id);
+        $user = auth()->user();
+    
+        // Check if work target exists
+        $workTarget = WorkTarget::updateOrCreate(
+            [
+                'evaluation_id' => $evaluation->id,
+                'type' => $request->type
+            ],
+            [
+                'approved' => $request->approved ?? false,
+                'pyd_report' => $user->isPYD() ? $request->report : null,
+                'ppp_report' => $user->isPPP() ? $request->report : null,
+            ]
+        );
+    
+        // Handle items based on type
+        if ($request->type === 'awal_tahun') {
+            $this->processInitialWorkTarget($workTarget, $request->items);
+        } elseif ($request->type === 'pertengahan_tahun') {
+            $this->processMidYearReview($workTarget, $request->added_items, $request->removed_items);
+        } elseif ($request->type === 'akhir_tahun') {
+            $this->processYearEndReport($workTarget, $request);
         }
-
-        $user = $request->user();
-
-        // Validate based on work target type
-        $this->validateWorkTargetSubmission($evaluation, $request->type, $user);
-
-        $workTarget = $evaluation->workTargets()->create([
-            'type' => $request->type,
-            'pyd_report' => $user->isPYD() ? $request->report : null,
-            'ppp_report' => $user->isPPP() ? $request->report : null,
-            'approved' => $user->isPPP() && $request->type === 'awal_tahun',
-        ]);
-
-        foreach ($request->items as $item) {
-            $workTarget->items()->create($item);
-        }
-
-        // Notify relevant users
-        $this->handleWorkTargetNotifications($workTarget, $user);
-
-        return response()->json([
-            'message' => 'Sasaran kerja berjaya disimpan',
-            'work_target' => $workTarget->load('items'),
-        ], 201);
+    
+        // Notifications
+        $this->sendWorkTargetNotifications($workTarget, $user);
+    
+        return redirect()->route('evaluations.show', $evaluation->id)
+            ->with('success', 'SKT berjaya disimpan');
     }
 
     public function show(WorkTarget $workTarget)
@@ -227,4 +237,81 @@ class WorkTargetController extends Controller
             'action_url' => $actionUrl,
         ]);
     }
+
+    private function processInitialWorkTarget($workTarget, $items)
+    {
+        $workTarget->items()->delete();
+        
+        foreach ($items as $item) {
+            $workTarget->items()->create([
+                'activity' => $item['activity'],
+                'performance_indicator' => $item['performance_indicator']
+            ]);
+        }
+    }
+    
+    private function processMidYearReview($workTarget, $addedItems, $removedItems)
+    {
+        // Add new items
+        foreach ($addedItems as $item) {
+            $workTarget->items()->create([
+                'activity' => $item['activity'],
+                'performance_indicator' => $item['performance_indicator'],
+                'is_added' => true
+            ]);
+        }
+    
+        // Mark removed items
+        foreach ($removedItems as $item) {
+            if ($item['is_removed'] ?? false) {
+                $workTarget->items()->create([
+                    'activity' => $item['activity'],
+                    'is_removed' => true
+                ]);
+            }
+        }
+    }
+    
+    private function sendWorkTargetNotifications($workTarget, $user)
+    {
+        $evaluation = $workTarget->evaluation;
+        $message = '';
+        $recipientId = null;
+    
+        switch ($workTarget->type) {
+            case 'awal_tahun':
+                if ($user->isPYD()) {
+                    $message = 'PYD telah menghantar SKT awal tahun untuk kelulusan anda';
+                    $recipientId = $evaluation->ppp_id;
+                } elseif ($user->isPPP() && $workTarget->approved) {
+                    $message = 'PPP telah meluluskan SKT awal tahun anda';
+                    $recipientId = $evaluation->pyd_id;
+                }
+                break;
+                
+            case 'pertengahan_tahun':
+                $message = 'PYD telah mengemaskini kajian semula pertengahan tahun';
+                $recipientId = $evaluation->ppp_id;
+                break;
+                
+            case 'akhir_tahun':
+                if ($user->isPYD()) {
+                    $message = 'PYD telah menghantar laporan akhir tahun';
+                    $recipientId = $evaluation->ppp_id;
+                } elseif ($user->isPPP()) {
+                    $message = 'PPP telah mengemaskini laporan akhir tahun';
+                    $recipientId = $evaluation->pyd_id;
+                }
+                break;
+        }
+    
+        if ($message && $recipientId) {
+            Notification::create([
+                'user_id' => $recipientId,
+                'message' => $message,
+                'action_url' => route('evaluations.show', $evaluation->id)
+            ]);
+        }
+    }
+
 }

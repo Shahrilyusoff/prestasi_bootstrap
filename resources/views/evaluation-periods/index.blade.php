@@ -12,6 +12,10 @@
 @section('content')
 <div class="card">
     <div class="card-body">
+        @if(session('success'))
+            <div class="alert alert-success">{{ session('success') }}</div>
+        @endif
+
         <div class="table-responsive">
             <table class="table table-striped">
                 <thead>
@@ -28,8 +32,8 @@
                     @foreach($periods as $period)
                     <tr>
                         <td>{{ $period->name }}</td>
-                        <td>{{ $period->start_date->format('d/m/Y') }}</td>
-                        <td>{{ $period->end_date->format('d/m/Y') }}</td>
+                        <td>{{ \Carbon\Carbon::parse($period->start_date)->format('d/m/Y') }}</td>
+                        <td>{{ \Carbon\Carbon::parse($period->end_date)->format('d/m/Y') }}</td>
                         <td>
                             @if($period->type === 'yearly')
                                 Tahunan
@@ -63,6 +67,9 @@
                                     <i class="fas fa-trash"></i>
                                 </button>
                             </form>
+                            <a href="{{ route('evaluation-periods.mass-assign', $period) }}" class="btn btn-sm btn-info">
+                                <i class="fas fa-users"></i> Tugasan
+                            </a>
                         </td>
                     </tr>
                     @endforeach

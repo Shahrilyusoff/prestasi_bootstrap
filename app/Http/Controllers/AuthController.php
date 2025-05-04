@@ -8,9 +8,14 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Log;
+use Symfony\Component\HttpFoundation\Response;
 
 class AuthController extends Controller
 {
+    /**
+     * Register a new user
+     */
     public function register(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -22,34 +27,54 @@ class AuthController extends Controller
             'position' => 'nullable|string|max:255',
             'grade' => 'nullable|string|max:255',
             'ministry_department' => 'nullable|string|max:255',
-            'ic_number' => 'nullable|string|max:255',
+            'ic_number' => 'nullable|string|max:15',
         ]);
 
         if ($validator->fails()) {
-            return response()->json($validator->errors(), 422);
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
-        $user = User::create([
-            'name' => $request->name,
-            'email' => $request->email,
-            'password' => Hash::make($request->password),
-            'user_type_id' => $request->user_type_id,
-            'pyd_group_id' => $request->pyd_group_id,
-            'position' => $request->position,
-            'grade' => $request->grade,
-            'ministry_department' => $request->ministry_department,
-            'ic_number' => $request->ic_number,
-        ]);
+        try {
+            $user = User::create([
+                'name' => $request->name,
+                'email' => $request->email,
+                'password' => Hash::make($request->password),
+                'user_type_id' => $request->user_type_id,
+                'pyd_group_id' => $request->pyd_group_id,
+                'position' => $request->position,
+                'grade' => $request->grade,
+                'ministry_department' => $request->ministry_department,
+                'ic_number' => $request->ic_number,
+            ]);
 
-        $token = $user->createToken('auth_token')->plainTextToken;
+            $token = $user->createToken('auth_token')->plainTextToken;
 
-        return response()->json([
-            'message' => 'Pendaftaran berjaya',
-            'user' => $user,
-            'token' => $token,
-        ], 201);
+            return response()->json([
+                'success' => true,
+                'message' => 'Pendaftaran berjaya',
+                'data' => [
+                    'user' => $user->load('userType', 'pydGroup'),
+                    'token' => $token
+                ]
+            ], Response::HTTP_CREATED);
+
+        } catch (\Exception $e) {
+            Log::error('Registration error: ' . $e->getMessage());
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Pendaftaran gagal. Sila cuba lagi.',
+                'error' => $e->getMessage()
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
     }
 
+    /**
+     * Login user and create token
+     */
     public function login(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -58,36 +83,94 @@ class AuthController extends Controller
         ]);
 
         if ($validator->fails()) {
-            return response()->json($validator->errors(), 422);
-        }
-
-        if (!Auth::attempt($request->only('email', 'password'))) {
             return response()->json([
-                'message' => 'Maklumat log masuk tidak sah'
-            ], 401);
+                'success' => false,
+                'errors' => $validator->errors()
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
-        $user = User::where('email', $request->email)->firstOrFail();
-        $token = $user->createToken('auth_token')->plainTextToken;
+        try {
+            if (!Auth::attempt($request->only('email', 'password'))) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Emel atau kata laluan tidak sah'
+                ], Response::HTTP_UNAUTHORIZED);
+            }
 
-        return response()->json([
-            'message' => 'Log masuk berjaya',
-            'user' => $user,
-            'token' => $token,
-        ]);
+            $user = User::where('email', $request->email)
+                ->with(['userType', 'pydGroup'])
+                ->firstOrFail();
+
+            // Revoke all previous tokens
+            $user->tokens()->delete();
+
+            $token = $user->createToken('auth_token')->plainTextToken;
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Log masuk berjaya',
+                'data' => [
+                    'user' => $user,
+                    'token' => $token
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Login error: ' . $e->getMessage());
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Log masuk gagal. Sila cuba lagi.',
+                'error' => $e->getMessage()
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
     }
 
+    /**
+     * Logout user (Revoke the token)
+     */
     public function logout(Request $request)
     {
-        $request->user()->currentAccessToken()->delete();
+        try {
+            $request->user()->currentAccessToken()->delete();
 
-        return response()->json([
-            'message' => 'Log keluar berjaya'
-        ]);
+            return response()->json([
+                'success' => true,
+                'message' => 'Log keluar berjaya'
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Logout error: ' . $e->getMessage());
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Log keluar gagal',
+                'error' => $e->getMessage()
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
     }
 
+    /**
+     * Get authenticated user details
+     */
     public function user(Request $request)
     {
-        return response()->json($request->user()->load('userType', 'pydGroup'));
+        try {
+            $user = $request->user()->load(['userType', 'pydGroup']);
+
+            return response()->json([
+                'success' => true,
+                'data' => $user
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('User details error: ' . $e->getMessage());
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal mendapatkan maklumat pengguna',
+                'error' => $e->getMessage()
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
     }
 }

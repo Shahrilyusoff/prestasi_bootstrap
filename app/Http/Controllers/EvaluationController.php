@@ -76,17 +76,23 @@ class EvaluationController extends Controller
     public function show(Evaluation $evaluation)
     {
         $evaluation->load([
-            'pyd', 'ppp', 'ppk', 'pydGroup', 
+            'pyd', 'ppp', 'ppk', 'pydGroup', 'evaluationPeriod',
             'marks.criteria.section', 
             'workTargets.items'
         ]);
-
+    
         $sections = EvaluationSection::with('criterias')->get();
-
-        return response()->json([
-            'evaluation' => $evaluation,
-            'sections' => $sections,
-        ]);
+        $activePeriod = EvaluationPeriod::active()->first();
+    
+        // Determine which sections are accessible based on period type and timing
+        $accessibleSections = $this->getAccessibleSections($evaluation, $activePeriod);
+    
+        return view('evaluations.show', compact(
+            'evaluation', 
+            'sections',
+            'accessibleSections',
+            'activePeriod'
+        ));
     }
 
     public function create()
@@ -152,14 +158,13 @@ class EvaluationController extends Controller
     {
         $section = EvaluationSection::where('code', $sectionCode)->firstOrFail();
         $user = $request->user();
-
+    
         // Validate user can submit this section
         $this->validateSectionSubmission($user, $section, $evaluation);
-
+    
         // Handle section-specific logic
         switch ($sectionCode) {
             case 'bahagian_ii':
-                // PYD submits Bahagian II
                 $evaluation->update(['status' => 'pyd_submit']);
                 $this->createNotification(
                     $evaluation->ppp_id,
@@ -167,9 +172,8 @@ class EvaluationController extends Controller
                     route('evaluations.show', $evaluation->id)
                 );
                 break;
-
+    
             case 'bahagian_viii':
-                // PPP submits Bahagian VIII
                 $evaluation->update(['status' => 'ppp_submit']);
                 $this->createNotification(
                     $evaluation->ppk_id,
@@ -177,22 +181,24 @@ class EvaluationController extends Controller
                     route('evaluations.show', $evaluation->id)
                 );
                 break;
-
+    
             case 'bahagian_ix':
-                // PPK submits Bahagian IX
                 $evaluation->update(['status' => 'selesai']);
                 $this->createNotification(
                     $evaluation->pyd_id,
                     'Penilaian prestasi anda telah selesai',
                     route('evaluations.show', $evaluation->id)
                 );
+                
+                // Create year-end work target if not exists
+                if (!$evaluation->workTargets()->where('type', 'akhir_tahun')->exists()) {
+                    $evaluation->workTargets()->create(['type' => 'akhir_tahun']);
+                }
                 break;
         }
-
-        return response()->json([
-            'message' => 'Bahagian berjaya dihantar',
-            'evaluation' => $evaluation,
-        ]);
+    
+        return redirect()->route('evaluations.show', $evaluation)
+            ->with('success', 'Bahagian berjaya dihantar');
     }
 
     public function saveMarks(Request $request, Evaluation $evaluation)
@@ -240,6 +246,51 @@ class EvaluationController extends Controller
             'evaluation' => $evaluation->fresh()->load('marks.criteria.section'),
         ]);
     }
+
+private function getAccessibleSections($evaluation, $activePeriod)
+{
+    $accessible = [];
+    $now = now();
+    $isMidYear = $activePeriod->type === 'mid_year';
+
+    // Bahagian I - Always accessible to PYD and PPP
+    $accessible['bahagian_i'] = true;
+
+    // Bahagian II - Accessible when period is active
+    $accessible['bahagian_ii'] = $activePeriod && 
+        $now->between($activePeriod->start_date, $activePeriod->end_date);
+
+    // Bahagian III-VIII - Different logic based on period type
+    if ($isMidYear) {
+        // Mid-year review focuses on SKT updates
+        $accessible['bahagian_iii'] = false;
+        $accessible['bahagian_iv'] = false;
+        $accessible['bahagian_v'] = false;
+        $accessible['bahagian_vi'] = false;
+        $accessible['bahagian_vii'] = false;
+        $accessible['bahagian_viii'] = false;
+    } else {
+        // Year-end evaluation
+        $accessible['bahagian_iii'] = $evaluation->status !== 'draf';
+        $accessible['bahagian_iv'] = $evaluation->status !== 'draf';
+        $accessible['bahagian_v'] = $evaluation->status !== 'draf';
+        $accessible['bahagian_vi'] = $evaluation->status !== 'draf';
+        $accessible['bahagian_vii'] = $evaluation->status === 'ppp_submit';
+        $accessible['bahagian_viii'] = $evaluation->status === 'ppp_submit';
+    }
+
+    // SKT Sections
+    $accessible['skt_awal_tahun'] = !$isMidYear && 
+        $now->between($activePeriod->start_date, $activePeriod->start_date->addMonths(1));
+    
+    $accessible['skt_pertengahan_tahun'] = $isMidYear && 
+        $now->between($activePeriod->start_date, $activePeriod->end_date);
+    
+    $accessible['skt_akhir_tahun'] = !$isMidYear && 
+        $now->between($activePeriod->end_date->subMonths(1), $activePeriod->end_date);
+
+    return $accessible;
+}
 
     private function validateSectionSubmission($user, $section, $evaluation)
     {
